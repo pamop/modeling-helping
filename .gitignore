@@ -1,0 +1,13 @@
+# files and folders for git to ignore
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
