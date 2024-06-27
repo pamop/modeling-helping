@@ -8,19 +8,20 @@ library(lmtest)
 ##########################################
 # Data
 ##########################################
-# import data
-setwd("~/Documents/gureckis lab/computational_helping/analysis")
+# set working directory to where this repo is located
+setwd("~/Documents/gureckis lab/modeling-helping")
 
+# import data
 # subject level demographics
-demographic_data = read.csv('../data/alldata/demographic_data.csv')
+demographic_data = read.csv('data/demographic_data.csv')
 
 # game data
-seshdf <- read.csv("../data/sessiondf.csv")
-subjseshdf <- read.csv("../data/subjsessiondf.csv")
-gamedf <- read.csv("../data/gamedf.csv")
-subjgamedf <- read.csv("../data/subjgamedf.csv")
-trialdf <- read.csv("../data/trialdf.csv")
-envfeats <- read.csv("../data/environment_features.csv")
+seshdf <- read.csv("data/sessiondf.csv")
+subjseshdf <- read.csv("data/subjsessiondf.csv")
+gamedf <- read.csv("data/gamedf.csv")
+subjgamedf <- read.csv("data/subjgamedf.csv")
+trialdf <- read.csv("data/trialdf.csv")
+envfeats <- read.csv("data/environment_features.csv")
 
 # Set unordered variables as factors
 # SESSION LEVEL FACTORS
@@ -358,6 +359,7 @@ t(AIC(m10,m6))
 # In conclusion model 10 wins
 # Let's format it for presenting the results
 # I want to show the estimates with stats from model fit, and add confidence intervals and odds ratios
+m10summary <- summary(m10)
 m10coefs <- coef(m10summary)
 OddsRatio <- exp(m10coefs[,"Estimate"])
 m10coefs <- cbind(m10coefs, OddsRatio)
