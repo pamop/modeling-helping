@@ -2,8 +2,8 @@
 
 import numpy as np
 import csv
-import pandas as pd
 from datetime import datetime
+import os
 
 def get_target_loc(target, legal_moves):
     moves = []
@@ -17,7 +17,8 @@ def get_target_loc(target, legal_moves):
 
 def get_items_from_layer(layer, coloronly = False): #twelve possible layers, "Items00" thru "Items11"
     # configure how to get list of veggies from a given starting setup (one of the twelve object layers)
-    fname = "../modeling/config/objectLayers.csv"
+    # print(os.getcwd())
+    fname = os.getcwd() + "/utils/game_configs.csv"
     objectlayers = {}
 
     with open(fname, 'r') as data:
@@ -140,74 +141,78 @@ def print_mapstr(veglist, chars):
     numLine = numLine.replace("values",colNums)
     print(numLine)
 
-def print_transcript(df, id, game):
-    thisgame = df[(df["id"]==id)][(df["gameNum"]==game)]
 
-    print("Showing game " + str(game) + " from player " + id)
+def print_transcript(df, sesh, game):
+    thisgame = df[(df["session"]==sesh) & (df["gameNum"]==game)]
+
+    print("Showing game " + str(game) + " from session " + sesh)
     print("Condition: " + thisgame["resourceCond"].iloc[0] + " " + thisgame["visibilityCond"].iloc[0] + " " + thisgame["costCond"].iloc[0])
     print("Red BP capacity: " + str(thisgame["redBackpackSize"].iloc[0]) + ", Purple BP capacity: " + str(thisgame["purpleBackpackSize"].iloc[0]))
-    print("start time: " + str(datetime.fromtimestamp(thisgame["timestamp"].iloc[0]/1000)))
+    print("start time: " + str(datetime.fromtimestamp(thisgame["turnStartTimestamp"].iloc[0]/1000)))
 
     # red starts at 'x':2, 'y':15
     # purple starts at 'x':3, 'y':16
     # chars = [(2,15,'R'),(3,16,'P')]
-    chars = [(thisgame["redXloc"].iloc[0],thisgame["redYloc"].iloc[0],'R'),(thisgame["purpleXloc"].iloc[0],thisgame["purpleYloc"].iloc[0],'P')]
+    # chars = [(thisgame["redXloc"].iloc[0],thisgame["redYloc"].iloc[0],'R'),(thisgame["purpleXloc"].iloc[0],thisgame["purpleYloc"].iloc[0],'P')]
 
-    veglist = get_items_from_layer(thisgame["objectLayer"].unique()[0])
-    print_mapstr(veglist, chars)
+    # veglist = get_items_from_layer(thisgame["objectLayer"].unique()[0])
+    # print_mapstr(veglist, chars)
 
-    for i in sorted(thisgame['trial'].unique()):
-        trial = thisgame[thisgame['trial']==i].iloc[0]
-        # print char backpacks and farm box contents
-        print("\n*** turn" + str(trial['turnCount']) + " ***")
-        print("Event:" + trial["eventName"])
-        
-        if trial['eventName']=="targetPicked":
-            # print char backpacks and farm box contents
-            print(trial['agent'] + "'s turn! ***")
-            print("Timestamp: " + str(datetime.fromtimestamp(trial["timestamp"]/1000)))
-            print("red backpack: " + str(trial["redBackpack"]))
-            print("purple backpack: " + str(trial["purpleBackpack"]))
-            print("current box: " + str(trial["farmBox"]))
-            print(chars)
+    for i in sorted(thisgame['trialNum'].unique()):
+        trial = thisgame[thisgame['trialNum']==i].iloc[0] # one row of the dataframe
+        # print(trial['gameover'])
 
-            charid = 0 if trial['agent']=="red" else 1
-            otherplayerid = 1 if charid==0 else 0 
+        # print map current status
+        chars = [(trial["redXloc"],trial["redYloc"],'R'),(trial["purpleXloc"],trial["purpleYloc"],'P')]
+        veglist = get_items_from_string(trial["farmItems"])
+        print_mapstr(veglist, chars)
 
-            print(trial['agent'] + " player picks " + trial['target'])
-            
-            
-        elif trial['eventName']=="objectEncountered":
-            # print current scores
-            print("Red energy="+str(trial['redEnergy'])+", score=" + str(trial['redScore']))
-            print("Purple energy="+str(trial['purpleEnergy'])+", score=" + str(trial['purpleScore']))
-
-            try:
-                chars = [(trial["redXloc"],trial["redYloc"],'R'),(trial["purpleXloc"],trial["purpleYloc"],'P')]
-                print(chars)
-            except:
-                # find target in legal moves to get the tile that they move to
-                x,y = get_target_loc(trial['target'], trial['legalMoves'])
-                if trial["target"]=="box":
-                    # move out of the way of the box
-                    x,y = x - 1, y + 2
-                    if (chars[otherplayerid][0]==x and chars[otherplayerid][1]==y):
-                        x,y = x + 1, y + 2
-
-                # move the corresponding character to their new location
-                if trial['agent']=="red":
-                    chars[0]=(x,y,'R')
-                else:
-                    chars[1]=(x,y,'P')
-                    
-            # print map current status
-            veglist = get_items_from_string(trial["farmItems"])
-            print_mapstr(veglist, chars)
-        elif "start" in trial['eventName']:
-            # print("Event:" + trial["eventName"])
-            print(" ")
-        else:
+        if trial['gameover']:
             # end of game
             print("END OF GAME!")
             print("Red energy="+str(trial['redEnergy'])+", score=" + str(trial['redScore']) + ": BONUS="+str(trial['redPoints']))
             print("Purple energy="+str(trial['purpleEnergy'])+", score=" + str(trial['purpleScore']) + ": BONUS="+str(trial['purplePoints']))
+        else: 
+            # print char backpacks and farm box contents
+            print("\n*** turn " + str(trial['turnCount'])+ ": " + trial['agent'] + "'s turn! ***")
+
+            # print("Timestamp: " + str(datetime.fromtimestamp(trial["decisionMadeTimestamp"]/1000)))
+            print("red backpack: " + str(trial["redBackpack"]))
+            print("purple backpack: " + str(trial["purpleBackpack"]))
+            print("harvest box: " + str(trial["farmBox"]))
+            # print(chars)
+                        
+            # print current scores
+            print("Red energy="+str(trial['redEnergy'])+", score=" + str(trial['redScore']))
+            print("Purple energy="+str(trial['purpleEnergy'])+", score=" + str(trial['purpleScore']))
+
+            # print player choice
+            print(trial['agent'].capitalize() + " player picks " + trial['target'] + ". Response time: " + str(int(trial['responseTime'])) + "ms.")
+
+        # chars = [(trial["redXloc"],trial["redYloc"],'R'),(trial["purpleXloc"],trial["purpleYloc"],'P')]
+        # # print map current status
+        # veglist = get_items_from_string(trial["farmItems"])
+        # print_mapstr(veglist, chars)
+        # # try:
+        #     chars = [(trial["redXloc"],trial["redYloc"],'R'),(trial["purpleXloc"],trial["purpleYloc"],'P')]
+        #     print(chars)
+        # except:
+        #     # find target in legal moves to get the tile that they move to
+        #     x,y = get_target_loc(trial['target'], trial['legalMoves'])
+        #     if trial["target"]=="box":
+        #         # move out of the way of the box
+        #         x,y = x - 1, y + 2
+        #         if (chars[otherplayerid][0]==x and chars[otherplayerid][1]==y):
+        #             x,y = x + 1, y + 2
+
+        #     # move the corresponding character to their new location
+        #     if trial['agent']=="red":
+        #         chars[0]=(x,y,'R')
+        #     else:
+        #         chars[1]=(x,y,'P')
+                    
+            # # print map current status
+            # veglist = get_items_from_string(trial["farmItems"])
+            # print_mapstr(veglist, chars)
+    
+    
