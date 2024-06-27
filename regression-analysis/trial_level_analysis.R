@@ -175,6 +175,8 @@ mfull3 <- glmer(helped ~ costCond + visibilityCond + resourceCond + agent
                 family=binomial,
                 control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=1e6)))
 
+# this full version 4 of the model is the one in the cogsci paper.
+# lrtests showed that the parameters included helped the fit
 mfull4 <- glmer(helped ~ costCond + visibilityCond + resourceCond + agent 
                 + gameNum + turnCount
                 + ownBPsize
