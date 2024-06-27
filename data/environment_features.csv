@@ -1,0 +1,13 @@
+environment,objectLayer,nRedVeg,nPurpVeg,patchUniformity,nPatches,patchSize
+1,Items00,4,4,TRUE,2,"4,4"
+2,Items01,4,4,FALSE,2,"4,4"
+3,Items02,5,3,TRUE,2,"5,3"
+4,Items03,3,5,TRUE,2,"3,5"
+5,Items04,7,7,TRUE,5,"3,2,2,2,2,3"
+6,Items05,7,7,FALSE,5,"3,2,2,2,2,3"
+7,Items06,4,4,TRUE,2,"4,4"
+8,Items07,4,4,FALSE,2,"4,4"
+9,Items08,3,5,TRUE,2,"5,3"
+10,Items09,5,3,TRUE,2,"3,5"
+11,Items10,7,7,TRUE,5,"3,2,2,2,2,3"
+12,Items11,7,7,FALSE,5,"3,2,2,2,2,3"
