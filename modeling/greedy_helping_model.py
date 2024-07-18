@@ -1,8 +1,10 @@
 import numpy as np
-from scipy.optimize import minimize
 from scipy.special import softmax
 
-class GreedyHelpingAgent:
+from modeling import farmgame
+from modeling.fitting import Model
+
+class GreedyHelpingModel(Model):
 	def __init__(self, colour, inverse_temperature = 1, helping_cost_ratio = 1, reciprocity = 0):
 		"""
 		Parameters:
@@ -30,7 +32,7 @@ class GreedyHelpingAgent:
 		self.helping_cost_ratio = helping_cost_ratio
 		self.reciprocity = reciprocity
 	
-	def get_probs(self, state, actions):
+	def get_probs(self, state: farmgame.Farm, actions):
 		perceived_costs = []
 		pass_index = -1
 		farm_dropoff_index = -1

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import copy
 
 # try:
@@ -6,11 +7,15 @@ import copy
 #     import modeling.pathfindingpy as pathfindingpy
 import csv
 import random
+from typing import Any, List, NamedTuple
 
 try:
     from utils import *
 except:
     from modeling.utils import *
+
+# TODO: find a better way to define the affordances of an action
+Action = Any
 
 # state space
 # state is an object with various features that define the current world. a snapshot of the current game
@@ -65,7 +70,7 @@ class Farm:
         self.costCond = config.get("condition")["costCond"]
         self.visibilityCond = config.get("condition")["visibilityCond"]
 
-    def get_cost(self, action):
+    def get_cost(self, action: Action) -> float:
         # no cost if no actions were available to the player
         if action["type"] == "none":
             return 0
@@ -75,8 +80,7 @@ class Farm:
             return self.pillowcost
 
         # whose turn is it?
-        playercolor = self.players[self.turn]["name"]
-        currentplayer = self.redplayer if playercolor == "red" else self.purpleplayer
+        currentplayer = self.players[self.turn]
 
         # player moves to location. decrease energy by steps taken.
         # find shortest path with bfs, use that step length to decrement energy
@@ -88,7 +92,7 @@ class Farm:
             n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
 
-    def take_action(self, action, inplace=True):
+    def take_action(self, action: Action, inplace=True) -> Farm:
         if inplace:
             new_state = self
         else:
@@ -166,7 +170,7 @@ class Farm:
         new_state.nextturn()
         return new_state
 
-    def nextturn(self):
+    def nextturn(self) -> None:
         self.trial += 1
         self.turn += 1
         if self.turn > 1:
@@ -174,7 +178,7 @@ class Farm:
         return
 
     # TODO: There is lots of room for different reward functions
-    def reward(self, playercolor):
+    def reward(self, playercolor: str):
         if playercolor == "red":
             relevantplayer = self.redplayer
         elif playercolor == "purple":
@@ -200,10 +204,7 @@ class Farm:
 
         return reward, done
 
-    # TODO: having player as an input here is pretty unnecessary.
-    # can simply get the currentplayer = self.players[self.turn]
-    # but idk i am always making things somewhat careful for copying
-    def legal_actions(self):  # ,player):
+    def legal_actions(self) -> List[Action]:
         action_list = []
         player = self.players[self.turn]
         # bag full
@@ -402,6 +403,12 @@ class Farm:
 
         return shash  # todo: use better hash library?
 
+class Transition(NamedTuple):
+    state: Farm
+    action: Action
+
+Game = List[Transition]
+Session = List[Game]
 
 # # global
 # def getstatefromhash(shash):
