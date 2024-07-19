@@ -5,21 +5,20 @@ import farmgame
 import fitting
 from farmgame_io import print_game
 from first_choice_model import FirstChoiceModel
-from generating import generate_game
+from generating import generate_session
 
 
 prefer_first = FirstChoiceModel(1000)
 dislike_first = FirstChoiceModel(0.1)
 
-initial_state = farmgame.configure_game()
-game = generate_game(initial_state, prefer_first, dislike_first)
-print_game(game)
+session = generate_session(prefer_first, dislike_first)
+print_game(session[0])
 
-def game_nll(params: List[float], game: farmgame.Game) -> float:
+def session_nll(params: List[float], session: farmgame.Session) -> float:
 	red_model = FirstChoiceModel(params[0])
 	purple_model = FirstChoiceModel(params[1])
-	return fitting.compute_nll(game, red_model, purple_model)
+	return sum([fitting.compute_nll(game, red_model, purple_model) for game in session])
 
 bounds = [(0.00001, None), (0.00001, None)]
-recovered = minimize(game_nll, x0=[1, 1], args=(game,), bounds = bounds, method='L-BFGS-B')
+recovered = minimize(session_nll, x0=[1, 1], args=(session,), bounds = bounds, method='L-BFGS-B')
 print([f"{x:.20f}" for x in recovered.x])
