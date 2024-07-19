@@ -151,6 +151,8 @@ class Farm:
             veg.status = "backpack"
             veg.loc = None
             currentplayer["backpack"]["contents"].append(veg)
+            if veg.color != currentplayer["color"]:
+                currentplayer["has_helped"] = True
 
         # if box, add backpack contents to box. increment score.
         if action.type == "box":
@@ -183,6 +185,10 @@ class Farm:
 
         new_state.nextturn()
         return new_state
+
+    def opponent_has_helped(self, color: str) -> bool:
+        opponent = self.redplayer if color == "red" else self.purpleplayer
+        return opponent["has_helped"]
 
     def nextturn(self) -> None:
         self.trial += 1
@@ -281,14 +287,15 @@ class Farm:
         player["score"] = 0
         player["energy"] = 100
         player["bonuspoints"] = 0
+        player["has_helped"] = False
         return player
 
-    def create_farmbox(self, config):
+    def create_farmbox(self, config) -> Action:
         farmbox = Action("box", "box", None, config.get("loc", {"x": 16, "y": 5}), "box")
         farmbox.contents = config.get("boxcontents", [])
         return farmbox
 
-    def create_veggie(self, config):
+    def create_veggie(self, config) -> Action:
         veggie = Action(config.get("name"), "veggie", config.get("color"), config.get("loc"), config.get("id"))
         veggie.status = config.get("status", "farm")
         return veggie
@@ -301,11 +308,11 @@ class Farm:
         backpack["contents"] = config.get("contents", [])
         return backpack
 
-    def create_pillow(self, config):
+    def create_pillow(self, config) -> Action:
         pillow = Action(config.get("name"),  config.get("name"), config.get("color"), config.get("loc"), config.get("color") + config.get("name"))
         return pillow
 
-    def create_items(self, layer):  # twelve possible layers, "Items00" thru "Items11"
+    def create_items(self, layer: str) -> List[Action]:  # twelve possible layers, "Items00" thru "Items11"
 
         # configure how to get list of veggies from a given starting setup (one of the twelve object layers)
         fname = "config/objectLayers.csv"

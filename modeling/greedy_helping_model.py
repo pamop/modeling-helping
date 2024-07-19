@@ -1,11 +1,12 @@
+from typing import List
 import numpy as np
 from scipy.special import softmax
 
-from modeling import farmgame
-from modeling.fitting import Model
+import farmgame
+from fitting import Model
 
 class GreedyHelpingModel(Model):
-	def __init__(self, colour, inverse_temperature = 1, helping_cost_ratio = 1, reciprocity = 0):
+	def __init__(self, colour: str, inverse_temperature = 1.0, helping_cost_ratio = 1.0, reciprocity = 0.0):
 		"""
 		Parameters:
 		colour:
@@ -32,22 +33,22 @@ class GreedyHelpingModel(Model):
 		self.helping_cost_ratio = helping_cost_ratio
 		self.reciprocity = reciprocity
 	
-	def get_probs(self, state: farmgame.Farm, actions):
+	def get_probs(self, state: farmgame.Farm, actions: List[farmgame.Action]):
 		perceived_costs = []
 		pass_index = -1
 		farm_dropoff_index = -1
 		can_harvest_own = False
 		can_help = False
 		for action in actions:
-			if action.is_pass:
+			if action.type == "pillow":
 				# store fixed cost now, but keep the index so we can modify it later
 				pass_index = len(perceived_costs)
 				perceived_costs.append(state.get_cost(action))
-			elif action.is_farm_dropoff:
+			elif action.type == "box":
 				# store the move cost now, but keep the index so we can modify it later
 				farm_dropoff_index = len(perceived_costs)
 				perceived_costs.append(state.get_cost(action))
-			elif action.is_colour(self.colour):
+			elif action.color == self.colour:
 				# getting your own veggies is simply taking the cost of getting there
 				can_harvest_own = True
 				perceived_costs.append(state.get_cost(action))
@@ -69,4 +70,4 @@ class GreedyHelpingModel(Model):
 			# if we can't pick anything up, but we can return to the farm, we should not pass
 			if pass_index >= 0:
 				perceived_costs[pass_index] = np.inf
-		return softmax(-perceived_costs * self.inv_temp)
+		return softmax([-cost * self.inv_temp for cost in perceived_costs])

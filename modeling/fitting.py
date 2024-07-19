@@ -19,7 +19,7 @@ def draw_index(probabilities: List[float]) -> int:
 
 class Model(ABC):
 	@abstractmethod
-	def get_probs(self, state: farmgame.Farm, actions) -> List[float]:
+	def get_probs(self, state: farmgame.Farm, actions: List[farmgame.Action]) -> List[float]:
 		pass
 
 	def choose_action(self, state: farmgame.Farm) -> farmgame.Action:
