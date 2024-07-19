@@ -5,11 +5,13 @@ try:
 except:
     import modeling.pathfindingpy as pathfindingpy
 
+import farmgame
+
 bfs = pathfindingpy.bfs.BreadthFirstFinder()
 
 
 # Get the walking path between two entities a and b. We need to know the game state to determine if there are any obstacles.
-def getPath(state, currentplayer, destination):
+def getPath(state, currentplayer, destination: farmgame.Action):
     # the default map of the game tells us all the environment collisions
     grid = pathfindingpy.Grid(
         state.map
@@ -25,8 +27,8 @@ def getPath(state, currentplayer, destination):
     path = bfs.findpath(
         currentplayer["loc"]["x"],
         currentplayer["loc"]["y"],
-        destination["loc"]["x"],
-        destination["loc"]["y"],
+        destination.loc["x"],
+        destination.loc["y"],
         grid,
     )
     return path

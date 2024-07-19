@@ -3,9 +3,9 @@ import farmgame
 
 def print_game(game: farmgame.Game) -> None:
 	for transition in game:
-		print([action['id'] for action in transition.state.legal_actions()])
+		print([str(action) for action in transition.state.legal_actions()])
 		player = transition.state.players[transition.state.turn]['name']
-		print(f"{player} picks {transition.action['id']}")
+		print(f"{player} picks {transition.action}")
 
 def create_state(row: dict):
 	farm = farmgame.configure_game(layer="Items00",resourceCond="even",costCond="low",visibilityCond="full",redFirst=True)
