@@ -13,6 +13,7 @@ def generate_game(start_state: farmgame.Farm, red_model: Model, purple_model: Mo
 		game.append(farmgame.Transition(state, action))
 		state = state.take_action(action, inplace=False)
 		_, done = state.reward(current_colour)
+	game.append(farmgame.Transition(state, None))
 	return game
 
 

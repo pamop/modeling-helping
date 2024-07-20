@@ -7,15 +7,33 @@ import copy
 #     import modeling.pathfindingpy as pathfindingpy
 import csv
 import random
-from typing import Any, List, NamedTuple
+from enum import Enum
+from typing import List, NamedTuple
+
+class ActionType(str, Enum):
+    none = "none"
+    pillow = "pillow"
+    timeout = "timeout"
+    box = "box"
+    veggie = "veggie"
 
 class Action():
-    def __init__(self, name: str, type: str, color: str, loc: dict, id: str) -> None:
+    def __init__(self, name: str, type: ActionType, color: str, loc: dict, id: str) -> None:
         self.name = name
         self.type = type
         self.color = color
         self.loc = loc
         self.id = id
+    
+    def get_target(self) -> str:
+        if self.type == ActionType.veggie:
+            return "redVeg" if self.color == "red" else "purpleVeg"
+        return self.type
+    
+    def get_category(self, player_color: str) -> str:
+        if self.type == ActionType.veggie:
+            return "ownVeg" if player_color == self.color else "otherVeg"
+        return self.type
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -86,11 +104,11 @@ class Farm:
 
     def get_cost(self, action: Action) -> float:
         # no cost if no actions were available to the player
-        if action.type == "none":
+        if action.type == ActionType.none:
             return 0
 
         # fixed cost if voluntarily passing
-        if action.type == "pillow":
+        if action.type == ActionType.pillow:
             return self.pillowcost
 
         # whose turn is it?
@@ -102,7 +120,7 @@ class Farm:
         n_steps = len(path)
 
         # decrease energy for move out of the way
-        if action.type == "box":
+        if action.type == ActionType.box:
             n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
 
@@ -117,7 +135,7 @@ class Farm:
         # what does the selected action do the player locations, item locations, and player scores + energy?
 
         # no costs and nothing happens
-        if action.type == "none":
+        if action.type == ActionType.none:
             new_state.nextturn()
             return new_state
 
@@ -134,7 +152,7 @@ class Farm:
         currentplayer["energy"] = max(0, currentplayer["energy"] - new_state.get_cost(action))
 
         # if action is pillow, no movement, no encounter, just small energy cost and move on.
-        if action.type == "pillow":
+        if action.type == ActionType.pillow:
             new_state.nextturn()
             return new_state
 
@@ -143,7 +161,7 @@ class Farm:
         currentplayer["loc"] = action.loc
 
         # if item, add to backpack.
-        if action.type == "veggie":
+        if action.type == ActionType.veggie:
             # FIND VEGGIE IN ITEMS rather than changing action directly
             veg = next(
                 (item for item in new_state.items if item.id == action.id), None
@@ -151,11 +169,11 @@ class Farm:
             veg.status = "backpack"
             veg.loc = None
             currentplayer["backpack"]["contents"].append(veg)
-            if veg.color != currentplayer["color"]:
+            if veg.color == otherplayer["color"]:
                 currentplayer["has_helped"] = True
 
         # if box, add backpack contents to box. increment score.
-        if action.type == "box":
+        if action.type == ActionType.box:
             for _ in range(len(currentplayer["backpack"]["contents"])):
                 veg = currentplayer["backpack"]["contents"].pop(0)
                 veg.status = "box"

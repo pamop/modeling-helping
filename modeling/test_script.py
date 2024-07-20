@@ -3,7 +3,7 @@ from scipy.optimize import minimize
 
 import farmgame
 import fitting
-from farmgame_io import print_game
+from farmgame_io import create_file, print_game
 from first_choice_model import FirstChoiceModel
 from greedy_helping_model import GreedyHelpingModel
 from generating import generate_session
@@ -15,6 +15,8 @@ greedy = GreedyHelpingModel("purple", 100, 10, 5)
 session = generate_session(prefer_first, greedy)
 # print the first game of the session as illustration
 print_game(session[0])
+print(len(session[0]))
+create_file("test.csv", session, "prefer1st_vs_greedy")
 
 # Gather stats
 red_help_count = 0
@@ -42,9 +44,9 @@ bounds = [
 	(0, None), # greedy helping cost ratio
 	(0, None)  # greedy reciprocity
 ]
-print("\nRecovering parameters...")
-recovered = minimize(session_nll, x0=x0, args=(session,), bounds = bounds, method='L-BFGS-B')
-print(f"Red first choice weight: {recovered.x[0]}")
-print(f"Purple inverse temperature: {recovered.x[1]}")
-print(f"Purple helping cost ratio: {recovered.x[2]}")
-print(f"Purple reciprocity: {recovered.x[3]}")
+# print("\nRecovering parameters...")
+# recovered = minimize(session_nll, x0=x0, args=(session,), bounds = bounds, method='L-BFGS-B')
+# print(f"Red first choice weight: {recovered.x[0]}")
+# print(f"Purple inverse temperature: {recovered.x[1]}")
+# print(f"Purple helping cost ratio: {recovered.x[2]}")
+# print(f"Purple reciprocity: {recovered.x[3]}")
