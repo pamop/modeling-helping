@@ -6,7 +6,10 @@ def print_game(game: farmgame.Game) -> None:
 		print([str(action) for action in transition.state.legal_actions()])
 		player = transition.state.players[transition.state.turn]['name']
 		if transition.action:
-			print(f"{player} picks {transition.action.type}")
+			print(f"{player} picks {transition.action}")
+
+def is_true(string: str) -> bool:
+	return string.lower().strip() == "true"
 
 def create_state(row: dict) -> farmgame.Farm:
 	farm = farmgame.configure_game(
@@ -14,27 +17,51 @@ def create_state(row: dict) -> farmgame.Farm:
 		resourceCond = row["resourceCond"],
 		costCond = row["costCond"],
 		visibilityCond= row["visibilityCond"],
-		redFirst = row["redFirst"].strip() == "TRUE")
+		redFirst = is_true(row["redFirst"]))
 	# TODO: modify the state with the other columns in the row
 	return farm
 
-def create_action(row: dict) -> farmgame.Action:
-	# TODO
+def get_id(row: dict, name: str) -> str:
+	name = name.lower()
+	for id in row["legalMoves"].split():
+		if name in id.lower():
+			return id
 	return None
 
-def load_sessions(filename: str) -> dict[str, farmgame.Session]:
+def create_action(row: dict) -> farmgame.Action:
+	if is_true(row["gameover"]):
+		return None
+	if row["targetCat"] == "box":
+		return farmgame.Farm.create_farmbox(farmgame.Farm.extract_location(get_id(row, "box")))
+	elif row["targetCat"] == "none" or row["targetCat"] == "pillow":
+		return farmgame.Farm.create_pillow(row["targetCat"], row["agent"], farmgame.Farm.extract_location(get_id(row, "none")))
+	if row["targetCat"] == "timeout":
+		return farmgame.Action("timeout", farmgame.ActionType.timeout, row["agent"], farmgame.Farm.extract_location(get_id(row, "none")), "timeout")
+	elif "Veg" in row["targetCat"]:
+		id = get_id(row, row["target"])
+		return farmgame.Farm.create_veggie(row["target"][:-2].lower(), row["targetColor"], farmgame.Farm.extract_location(id), id)
+	raise Exception(f"Please add logic to create an action for {row["targetCat"]}:\n{row}")
+
+def load_sessions(filename: str, max_amount=-1) -> dict[str, farmgame.Session]:
 	sessions = {}
 	with open(filename) as in_file:
 		for row in csv.DictReader(in_file):
-			session = sessions.get(row["session"], [])
+			session_name = row["session"]
+			session = sessions.get(session_name, [])
+			# if we didn't already know about this session then it is a new one and we add it
 			if not session:
-				sessions[row["sessions"]] = session
-			if row["turnCount"] == 0:
+				if max_amount >= 0 and len(sessions) + 1 == max_amount:
+					# stop reading if we've seen enough
+					break
+				print(f"Reading session {len(sessions)} {session_name}", end="\r")
+				sessions[session_name] = session
+			# retrieve a game in this session or start a new one
+			if int(row["turnCount"]) == 0:
 				game = []
-				session.append[game]
+				session.append(game)
 			else:
-				game = session[row["gameNum"]]
-			game.append(farmgame.Transition(create_state(row), create_action(row))
+				game = session[int(row["gameNum"])]
+			game.append(farmgame.Transition(create_state(row), create_action(row)))
 	return sessions
 
 def write_header(file) -> None:

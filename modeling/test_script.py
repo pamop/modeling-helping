@@ -3,10 +3,13 @@ from scipy.optimize import minimize
 
 import farmgame
 import fitting
-from farmgame_io import create_file, print_game
+from farmgame_io import create_file, load_sessions, print_game
 from first_choice_model import FirstChoiceModel
 from greedy_helping_model import GreedyHelpingModel
 from generating import generate_session
+
+sessions = load_sessions("../data/trialdf.csv", 20)
+print_game(sessions["4cKdZNL492Ie0V"][0])
 
 # set up the two players
 prefer_first = FirstChoiceModel(1000)
@@ -14,7 +17,6 @@ greedy = GreedyHelpingModel("purple", 100, 10, 5)
 # generate the session
 session = generate_session(prefer_first, greedy)
 # print the first game of the session as illustration
-print_game(session[0])
 print(len(session[0]))
 create_file("test.csv", session, "prefer1st_vs_greedy")
 
