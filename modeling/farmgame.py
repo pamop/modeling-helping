@@ -1,9 +1,11 @@
 from __future__ import annotations
+from collections import Counter
+from enum import Enum
+from typing import NamedTuple
 import copy
 import csv
 import random
-from enum import Enum
-from typing import NamedTuple
+import utils
 
 class ActionType(str, Enum):
     none = "none"
@@ -37,7 +39,7 @@ class Action():
         return isinstance(other, Action) and other.id == self.id
     
     def __str__(self) -> str:
-        return self.id
+        return f"{self.id}({self.loc['x']},{self.loc['y']})"
 
 try:
     from utils import *
@@ -89,10 +91,10 @@ class Farm:
         )  # 1 # but it could be twoooooo # config.stepcost
         self.pillowcost = config.get("pillowcost")
         self.map = (
-            getMap()
+            utils.getMap()
         )  # map # GLOBAL VAR same map of collisions for all games #config.get('map')
         self.turn = config.get("turn", 0)  # self.players[0]
-        self.trial = 0  # game starts at trial 0
+        self.trial = config.get("trial", 0)  # game starts at trial 0
 
         # condition info
         self.resourceCond = config.get("condition")["resourceCond"]
@@ -105,20 +107,25 @@ class Farm:
             return 0
 
         # fixed cost if voluntarily passing
-        if action.type == ActionType.pillow:
+        if action.type == ActionType.pillow or action.type == ActionType.timeout:
             return self.pillowcost
 
         # whose turn is it?
-        currentplayer = self.players[self.turn]
+        currentplayer = self.whose_turn()
 
         # player moves to location. decrease energy by steps taken.
         # find shortest path with bfs, use that step length to decrement energy
-        path = getPath(self, currentplayer, action)
-        n_steps = len(path)
+        path = utils.getPath(self, currentplayer, action)
+        n_steps = len(path) - 1
+        if utils.is_in_line(currentplayer["loc"], self.other_player()["loc"], action.loc):
+            # Add 2 sidesteps if the other player is in the way. Somehow getPath doesn't cover this.
+            n_steps += 2
 
         # decrease energy for move out of the way
         if action.type == ActionType.box:
-            n_steps += 3 # three because moving 1,2 away
+            statuses = Counter(item.status for item in self.items)
+            if "farm" in statuses or statuses["backpack"] > len(currentplayer["backpack"]["contents"]):
+                n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
 
     def take_action(self, action: Action, inplace=True) -> Farm:
@@ -164,15 +171,14 @@ class Farm:
                 (item for item in new_state.items if item.id == action.id), None
             )
             veg.status = "backpack"
-            veg.loc = None
-            currentplayer["backpack"]["contents"].append(veg)
-            if veg.color == otherplayer["color"]:
+            currentplayer["backpack"]["contents"].append(action)
+            if Transition(self, action).is_helping():
                 currentplayer["has_helped"] = True
 
         # if box, add backpack contents to box. increment score.
         if action.type == ActionType.box:
             for _ in range(len(currentplayer["backpack"]["contents"])):
-                veg = currentplayer["backpack"]["contents"].pop(0)
+                veg = currentplayer["backpack"]["contents"].pop()
                 veg.status = "box"
 
                 # print(currentplayer["name"] + " deposits " + veg["id"])
@@ -191,13 +197,16 @@ class Farm:
                     otherplayer["score"] += 1
                 else:
                     print("The veggie is neither red nor purple?")
+            if new_state.is_done():
+                new_state.redplayer["bonuspoints"] = new_state.reward("red")
+                new_state.purpleplayer["bonuspoints"] = new_state.reward("purple")
+                return new_state
             # move out of the way of the box
             pos = currentplayer["loc"]
             newpos = {"x": pos["x"] - 1, "y": pos["y"] + 2}
             if newpos == otherplayer["loc"]:
                 newpos = {"x": pos["x"] + 1, "y": pos["y"] + 2}
             currentplayer["loc"] = newpos
-
         new_state.nextturn()
         return new_state
 
@@ -211,6 +220,9 @@ class Farm:
         if self.turn > 1:
             self.turn = 0
         return
+    
+    def is_done(self):
+        return all(item.status == "box" for item in self.items)
 
     # TODO: There is lots of room for different reward functions
     def reward(self, playercolor: str):
@@ -221,13 +233,10 @@ class Farm:
         else:
             print("EROR")
 
-        state = self
         # currentplayer = state.players[state.turn]
         reward = 0
-        done = False
         # is the game over? set done to true, give bonus points
-        if all(i.status == "box" for i in state.items):
-            done = True
+        if self.is_done():
             # print(playercolor + " player's score is " + str(relevantplayer['score']) + " and energy is " + str(relevantplayer['energy']))
             relevantplayer["bonuspoints"] = (
                 relevantplayer["score"] * relevantplayer["energy"]
@@ -237,7 +246,13 @@ class Farm:
         # else:
         #     reward = relevantplayer.score #just how many items they have delivered as they go along
 
-        return reward, done
+        return reward
+
+    def whose_turn(self):
+        return self.players[self.turn]
+    
+    def other_player(self):
+        return self.players[1 - self.turn]
 
     def legal_actions(self) -> list[Action]:
         action_list = []
@@ -287,10 +302,10 @@ class Farm:
                 "contents": config.get("contents", []),
             }
         )  # default backpacksettings
-        player["score"] = 0
-        player["energy"] = 100
-        player["bonuspoints"] = 0
-        player["has_helped"] = False
+        player["score"] = config.get("score", 0)
+        player["energy"] = config.get("energy", 100)
+        player["bonuspoints"] = config.get("bonuspoints", 0)
+        player["has_helped"] = config.get("has_helped", False)
         return player
 
     @staticmethod
@@ -300,8 +315,8 @@ class Farm:
         return farmbox
 
     @staticmethod
-    def create_veggie(name: str, color: str, location: dict[str, int], id: str, status="farm") -> Action:
-        veggie = Action(name, ActionType.veggie, color, location, id)
+    def create_veggie(name: str, color: str, vegstr: str, status="farm") -> Action:
+        veggie = Action(name, ActionType.veggie, color, Farm.extract_location(vegstr), vegstr.split("(")[0])
         veggie.status = status
         return veggie
 
@@ -324,6 +339,13 @@ class Farm:
     def extract_location(item: str) -> dict[str, int]:
         x, y = item.split("(")[-1].strip(")").split(",")
         return {"x": int(x), "y": int(y)}
+    
+    @staticmethod
+    def create_item(vegstr: str) -> Action:
+        # veggie str looks something like: 'Tomato00(8,7)' or 'Strawberry00(7,7)'
+        name = vegstr.split("0")[0].lower()
+        color = "red" if name == "tomato" or name == "strawberry" else "purple"
+        return Farm.create_veggie(name, color, vegstr)
 
     def create_items(self, layer: str) -> list[Action]:  # twelve possible layers, "Items00" thru "Items11"
 
@@ -338,14 +360,8 @@ class Farm:
                 # print(layername)
                 objectlayers[layername] = farmitems
 
-        veggies = []
         # twelve possible layers, "Items00" thru "Items11"
-        for vegstr in objectlayers[layer]:
-            # veggie str looks something like: 'Tomato00(8,7)' or 'Strawberry00(7,7)'
-            name = vegstr.split("0")[0].lower()
-            color = "red" if name == "tomato" or name == "strawberry" else "purple"
-            veggies.append(self.create_veggie(name, color, self.extract_location(vegstr), vegstr))
-        return veggies
+        return [self.create_item(vegstr) for vegstr in objectlayers[layer]]
 
     def __iter__(self):
         state = copy.deepcopy(
@@ -407,6 +423,22 @@ class Farm:
 class Transition(NamedTuple):
     state: Farm
     action: Action
+
+    def next_state(self) -> Farm:
+        return self.state.take_action(self.action, inplace=False)
+
+    def is_helping(self, target_player: str|dict = None) -> bool:
+        if not self.action:
+            return False
+        if target_player:
+            target_color = target_player["color"] if isinstance(target_player, dict) else target_player
+            if target_color != self.state.whose_turn()["color"]:
+                # a player can't be helping if it isn't their turn
+                return False
+        return self.action.color == self.state.other_player()["color"]
+    
+    def __str__(self) -> str:
+        return f"{self.state.trial:>2}. {self.state.whose_turn()['color']} picks {self.action}"
 
 Game = list[Transition]
 Session = list[Game]

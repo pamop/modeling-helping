@@ -4,22 +4,43 @@ import farmgame
 def print_game(game: farmgame.Game) -> None:
 	for transition in game:
 		print([str(action) for action in transition.state.legal_actions()])
-		player = transition.state.players[transition.state.turn]['name']
-		if transition.action:
-			print(f"{player} picks {transition.action}")
+		print(transition)
 
 def is_true(string: str) -> bool:
 	return string.lower().strip() == "true"
 
+def get_player_config(row: dict, name: str) -> dict:
+	return {
+		"loc": {
+			"x": int(row[f"{name}Xloc"]),
+			"y": int(row[f"{name}Yloc"])
+		},
+		"name": name,
+		"capacity": int(row[f"{name}BackpackSize"]),
+		"contents": [farmgame.Farm.create_item(id) for id in row[f"{name}Backpack"].split()],
+		"score": int(row[f"{name}Score"]),
+		"energy": int(row[f"{name}Energy"]),
+		"bonuspoints": int(row[f"{name}Points"])
+	}
+
 def create_state(row: dict) -> farmgame.Farm:
-	farm = farmgame.configure_game(
-		layer = row["objectLayer"],
-		resourceCond = row["resourceCond"],
-		costCond = row["costCond"],
-		visibilityCond= row["visibilityCond"],
-		redFirst = is_true(row["redFirst"]))
-	# TODO: modify the state with the other columns in the row
-	return farm
+	state = farmgame.Farm({
+		"condition": {
+			"resourceCond": row["resourceCond"],
+			"costCond": row["costCond"],
+			"visibilityCond": row["visibilityCond"]
+		},
+		"redplayer": get_player_config(row, "red"),
+		"purpleplayer": get_player_config(row, "purple"),
+		"redfirst": is_true(row["redFirst"]),
+		"items": row["objectLayer"],
+		"farmbox": {"boxcontents": [farmgame.Farm.create_item(id) for id in row[f"farmBox"].split()],},
+		"stepcost": 2 if row["costCond"] == "high" else 1,
+		"pillowcost": 5,
+		"turn": int(row["turnCount"]) % 2,
+		"trial": int(row["turnCount"])
+	})
+	return state
 
 def get_id(row: dict, name: str) -> str:
 	name = name.lower()
@@ -38,22 +59,41 @@ def create_action(row: dict) -> farmgame.Action:
 	if row["targetCat"] == "timeout":
 		return farmgame.Action("timeout", farmgame.ActionType.timeout, row["agent"], farmgame.Farm.extract_location(get_id(row, "none")), "timeout")
 	elif "Veg" in row["targetCat"]:
-		id = get_id(row, row["target"])
-		return farmgame.Farm.create_veggie(row["target"][:-2].lower(), row["targetColor"], farmgame.Farm.extract_location(id), id)
-	raise Exception(f"Please add logic to create an action for {row["targetCat"]}:\n{row}")
+		return farmgame.Farm.create_veggie(row["target"][:-2].lower(), row["targetColor"], get_id(row, row["target"]))
+	raise Exception(f"Please add logic to create an action for {row['targetCat']}:\n{row}")
 
-def load_sessions(filename: str, max_amount=-1) -> dict[str, farmgame.Session]:
+def ascending_trial_num(file):
+	previous_row = None
+	for current_row in csv.DictReader(file):
+		if previous_row:
+			if previous_row["session"] == current_row["session"] and \
+					int(previous_row["trialNum"]) > int(current_row["trialNum"]):
+				# The previous row comes later. Keep it and return the current row first.
+				yield current_row
+				# Swap the row we're keeping
+				current_row = previous_row
+			else:
+				# Normal order. Return the previous row first
+				yield previous_row
+		# Keep the row that we didn't return for the next comparison
+		previous_row = current_row
+	# Return the very last line that we held on to
+	if previous_row:
+		yield previous_row
+
+def load_sessions(filename: str, max_amount=-1, print_progress=True) -> dict[str, farmgame.Session]:
 	sessions = {}
 	with open(filename) as in_file:
-		for row in csv.DictReader(in_file):
+		for row in ascending_trial_num(in_file):
 			session_name = row["session"]
 			session = sessions.get(session_name, [])
 			# if we didn't already know about this session then it is a new one and we add it
 			if not session:
-				if max_amount >= 0 and len(sessions) + 1 == max_amount:
+				if max_amount >= 0 and len(sessions) == max_amount:
 					# stop reading if we've seen enough
 					break
-				print(f"Reading session {len(sessions)} {session_name}", end="\r")
+				if print_progress:
+					print(f"Reading session {len(sessions) + 1} {session_name}", end="\r")
 				sessions[session_name] = session
 			# retrieve a game in this session or start a new one
 			if int(row["turnCount"]) == 0:
@@ -61,7 +101,13 @@ def load_sessions(filename: str, max_amount=-1) -> dict[str, farmgame.Session]:
 				session.append(game)
 			else:
 				game = session[int(row["gameNum"])]
-			game.append(farmgame.Transition(create_state(row), create_action(row)))
+			transition = farmgame.Transition(create_state(row), create_action(row))
+			if len(game) > 0:
+				transition.state.redplayer["has_helped"] = game[-1].state.redplayer["has_helped"] or game[-1].is_helping("red")
+				transition.state.purpleplayer["has_helped"] = game[-1].state.purpleplayer["has_helped"] or game[-1].is_helping("purple")
+			game.append(transition)
+	if print_progress:
+		print()
 	return sessions
 
 def write_header(file) -> None:
@@ -116,7 +162,7 @@ def write_game(file, game: farmgame.Game, session_name="", trial_nr=0, game_nr=0
 	for transition in game:
 		state = transition.state
 		action = transition.action
-		current_player = state.players[state.turn]
+		current_player = state.whose_turn()
 		game_over = not action
 		file.write(",".join([
 			session_name + current_player["color"],
@@ -132,7 +178,7 @@ def write_game(file, game: farmgame.Game, session_name="", trial_nr=0, game_nr=0
 			"objectEncountered" if game_over else "targetPicked", # eventName
 			str(state.trial - 1 if game_over else state.trial), # turnCount
 			current_player["color"],
-			action.id.split("(")[0] if action else "box", # target
+			action.id if action else "box", # target
 			"", # turnStartTimestamp
 			"", # responseTime
 			"", # decisionMadeTimestamp
@@ -150,13 +196,13 @@ def write_game(file, game: farmgame.Game, session_name="", trial_nr=0, game_nr=0
 			str(state.purpleplayer["backpack"]["capacity"]),
 			str(state.purpleplayer["energy"]),
 			str(state.purpleplayer["score"]),
-			str(state.reward("purple")[0]), # purple points
-			str(state.reward("purple")[0] + cumulative_purple),
+			str(state.reward("purple")), # purple points
+			str(state.reward("purple") + cumulative_purple),
 			str(state.redplayer["backpack"]["capacity"]),
 			str(state.redplayer["energy"]),
 			str(state.redplayer["score"]),
-			str(state.reward("red")[0]), # red points
-			str(state.reward("red")[0] + cumulative_red),
+			str(state.reward("red")), # red points
+			str(state.reward("red") + cumulative_red),
 			"TRUE" if game_over else "FALSE", # lastTrial
 			str(state.get_cost(action)) if action else "",
 			"box" if not action or action.type == farmgame.ActionType.box else action.color if action.type == farmgame.ActionType.veggie else "none",

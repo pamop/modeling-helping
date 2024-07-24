@@ -8,9 +8,6 @@ from first_choice_model import FirstChoiceModel
 from greedy_helping_model import GreedyHelpingModel
 from generating import generate_session
 
-sessions = load_sessions("../data/trialdf.csv", 20)
-print_game(sessions["4cKdZNL492Ie0V"][0])
-
 # set up the two players
 prefer_first = FirstChoiceModel(1000)
 greedy = GreedyHelpingModel("purple", 100, 10, 5)
@@ -46,9 +43,9 @@ bounds = [
 	(0, None), # greedy helping cost ratio
 	(0, None)  # greedy reciprocity
 ]
-# print("\nRecovering parameters...")
-# recovered = minimize(session_nll, x0=x0, args=(session,), bounds = bounds, method='L-BFGS-B')
-# print(f"Red first choice weight: {recovered.x[0]}")
-# print(f"Purple inverse temperature: {recovered.x[1]}")
-# print(f"Purple helping cost ratio: {recovered.x[2]}")
-# print(f"Purple reciprocity: {recovered.x[3]}")
+print("\nRecovering parameters...")
+recovered = minimize(session_nll, x0=x0, args=(session,), bounds = bounds, method='L-BFGS-B')
+print(f"Red first choice weight: {recovered.x[0]}")
+print(f"Purple inverse temperature: {recovered.x[1]}")
+print(f"Purple helping cost ratio: {recovered.x[2]}")
+print(f"Purple reciprocity: {recovered.x[3]}")

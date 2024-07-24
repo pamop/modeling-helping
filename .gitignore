@@ -12,3 +12,5 @@ __pycache__/
 !.vscode/extensions.json
 .DS_Store
 .Rhistory
+modeling/test.csv
+.ipynb_checkpoints/

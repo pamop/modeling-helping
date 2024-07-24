@@ -34,7 +34,8 @@ def compute_nll(game: farmgame.Game, red_model: Model, purple_model: Model) -> f
 		current_colour = transition.state.players[transition.state.turn]['name']
 		current_model = red_model if current_colour == 'red' else purple_model
 		actions = transition.state.legal_actions()
-		probs = current_model.get_probs(transition.state, actions)
-		chosen_index = actions.index(transition.action)
-		nll -= math.log(probs[chosen_index])
+		if actions:
+			probs = current_model.get_probs(transition.state, actions)
+			chosen_index = actions.index(transition.action)
+			nll -= math.log(probs[chosen_index])
 	return nll
