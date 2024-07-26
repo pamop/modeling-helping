@@ -33,7 +33,7 @@ def getPath(state, currentplayer: dict, destination_action):
 # Given two dicts that have a "loc":{"x":_, "y":_ } property, find the distance from the second to the first
 # this does not take collisions into account
 def getManhattanDistance(a, b):
-    return abs(b["loc"]["x"] - a["loc"]["x"]) + abs(b["loc"]["y"] - a["loc"]["y"])
+    return abs(b["x"] - a["x"]) + abs(b["y"] - a["y"])
 
 
 def is_in_line(origin: dict, block: dict, dest: dict,) -> bool:
@@ -72,7 +72,7 @@ def get_differences(d1: dict | list, d2: dict | list, skip_keys=[], path="") -> 
 
 def get_player_differences(player1: dict, player2: dict, name: str) -> list[str]:
     differences = get_differences(player1, player2, ["loc"], name)
-    if getManhattanDistance(player1, player2) > 1:
+    if getManhattanDistance(player1["loc"], player2["loc"]) > 1:
         differences.extend(get_differences(player1["loc"], player2["loc"], [], f"{name}/loc"))
     return differences
 

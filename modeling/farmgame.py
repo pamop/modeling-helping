@@ -57,6 +57,14 @@ except:
 # - timestamp
 # - anything else...????
 class Farm:
+    objectlayers = {}
+    # configure how to get list of veggies from a given starting setup (one of the twelve object layers)
+    with open("config/objectLayers.csv", "r") as data:
+        for line in csv.DictReader(data):
+            layername = line["objectLayer"]
+            farmitems = line["farmItems"].strip("']['").split(" ")
+            objectlayers[layername] = farmitems
+
     # NOTE: anything you add to init, must be added to config in deep_copy method to ensure entire state info is copied
     def __init__(self, config):
         self.redplayer = self.create_player(
@@ -77,7 +85,7 @@ class Farm:
             type(temp) == str
         ):  # we have been given the name of the item layer to generate items with
             self.objectLayer = temp
-            self.items = self.create_items(temp)
+            self.items = Farm.create_items(temp)
         else:  # we have been given the list of items itself
             self.objectLayer = "uhhh"
             self.items = temp
@@ -114,16 +122,20 @@ class Farm:
         currentplayer = self.whose_turn()
 
         # player moves to location. decrease energy by steps taken.
-        # find shortest path with bfs, use that step length to decrement energy
-        path = utils.getPath(self, currentplayer, action)
-        n_steps = len(path) - 1
-        if utils.is_in_line(currentplayer["loc"], self.other_player()["loc"], action.loc):
+        n_steps = utils.getManhattanDistance(currentplayer["loc"], action.loc)
+        # if going to the farm the player might have to step around the farm wall
+        if action.type == ActionType.box and currentplayer["loc"]["y"] <= self.farmbox.loc["y"]:
+            n_steps += 2
+        # if the player, other player and target are in the same row or column, and the other
+        # player is in the way, then add 2 sidesteps to go around them.
+        elif utils.is_in_line(currentplayer["loc"], self.other_player()["loc"], action.loc):
             # Add 2 sidesteps if the other player is in the way. Somehow getPath doesn't cover this.
             n_steps += 2
 
         # decrease energy for move out of the way
         if action.type == ActionType.box:
             statuses = Counter(item.status for item in self.items)
+            # check if this move will end the game. If it does then the payer does not move away.
             if "farm" in statuses or statuses["backpack"] > len(currentplayer["backpack"]["contents"]):
                 n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
@@ -347,21 +359,10 @@ class Farm:
         color = "red" if name == "tomato" or name == "strawberry" else "purple"
         return Farm.create_veggie(name, color, vegstr)
 
-    def create_items(self, layer: str) -> list[Action]:  # twelve possible layers, "Items00" thru "Items11"
-
-        # configure how to get list of veggies from a given starting setup (one of the twelve object layers)
-        fname = "config/objectLayers.csv"
-        objectlayers = {}
-
-        with open(fname, "r") as data:
-            for line in csv.DictReader(data):
-                layername = line["objectLayer"]
-                farmitems = line["farmItems"].strip("']['").split(" ")
-                # print(layername)
-                objectlayers[layername] = farmitems
-
+    @staticmethod
+    def create_items(layer: str) -> list[Action]:  # twelve possible layers, "Items00" thru "Items11"
         # twelve possible layers, "Items00" thru "Items11"
-        return [self.create_item(vegstr) for vegstr in objectlayers[layer]]
+        return [Farm.create_item(vegstr) for vegstr in Farm.objectlayers[layer]]
 
     def __iter__(self):
         state = copy.deepcopy(
