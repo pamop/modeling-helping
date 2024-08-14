@@ -12,7 +12,7 @@ class FirstChoiceModel(Model):
 		self.first_choice_weight = first_choice_weight
 
 	def describe_parameters(self) -> list[Parameter]:
-		return [Parameter("first_choice_weight", 0)]
+		return [Parameter("first_choice_weight", 1e-100)]
 	
 	def create_from_list(self, params: list[float]) -> Model:
 		return FirstChoiceModel(params[0])
@@ -21,8 +21,6 @@ class FirstChoiceModel(Model):
 		return [(unit[0] + 0.5) ** 6]
 	
 	def get_probs(self, state: farmgame.Farm, actions: list[farmgame.Action]) -> list[float]:
-		if len(actions) <= 1:
-			return [1]
 		weights = [1] * len(actions)
 		weights[0] = self.first_choice_weight
 		total = sum(weights)
