@@ -1,21 +1,36 @@
 from __future__ import annotations
+from collections import Counter
+from enum import Enum
+from typing import NamedTuple
 import copy
-
-# try:
-#     import pathfindingpy
-# except:
-#     import modeling.pathfindingpy as pathfindingpy
 import csv
 import random
-from typing import Any, List, NamedTuple
+import utils
+
+class ActionType(str, Enum):
+    none = "none"
+    pillow = "pillow"
+    timeout = "timeout"
+    box = "box"
+    veggie = "veggie"
 
 class Action():
-    def __init__(self, name: str, type: str, color: str, loc: dict, id: str) -> None:
+    def __init__(self, name: str, type: ActionType, color: str, loc: dict, id: str) -> None:
         self.name = name
         self.type = type
         self.color = color
         self.loc = loc
         self.id = id
+    
+    def get_target(self) -> str:
+        if self.type == ActionType.veggie:
+            return "redVeg" if self.color == "red" else "purpleVeg"
+        return self.type
+    
+    def get_category(self, player_color: str) -> str:
+        if self.type == ActionType.veggie:
+            return "ownVeg" if player_color == self.color else "otherVeg"
+        return self.type
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -24,7 +39,7 @@ class Action():
         return isinstance(other, Action) and other.id == self.id
     
     def __str__(self) -> str:
-        return self.id
+        return f"{self.id}({self.loc['x']},{self.loc['y']})"
 
 try:
     from utils import *
@@ -42,6 +57,14 @@ except:
 # - timestamp
 # - anything else...????
 class Farm:
+    objectlayers = {}
+    # configure how to get list of veggies from a given starting setup (one of the twelve object layers)
+    with open("config/objectLayers.csv", "r") as data:
+        for line in csv.DictReader(data):
+            layername = line["objectLayer"]
+            farmitems = line["farmItems"].strip("']['").split(" ")
+            objectlayers[layername] = farmitems
+
     # NOTE: anything you add to init, must be added to config in deep_copy method to ensure entire state info is copied
     def __init__(self, config):
         self.redplayer = self.create_player(
@@ -62,22 +85,24 @@ class Farm:
             type(temp) == str
         ):  # we have been given the name of the item layer to generate items with
             self.objectLayer = temp
-            self.items = self.create_items(temp)
+            self.items = Farm.create_items(temp)
         else:  # we have been given the list of items itself
             self.objectLayer = "uhhh"
             self.items = temp
+        box_config = config.get("farmbox", {})
         self.farmbox = self.create_farmbox(
-            config.get("farmbox", {})
+            box_config.get("loc", {"x": 16, "y": 5}),
+            box_config.get("boxcontents", [])
         )  # default starts as empty box
         self.stepcost = config.get(
             "stepcost"
         )  # 1 # but it could be twoooooo # config.stepcost
         self.pillowcost = config.get("pillowcost")
         self.map = (
-            getMap()
+            utils.getMap()
         )  # map # GLOBAL VAR same map of collisions for all games #config.get('map')
         self.turn = config.get("turn", 0)  # self.players[0]
-        self.trial = 0  # game starts at trial 0
+        self.trial = config.get("trial", 0)  # game starts at trial 0
 
         # condition info
         self.resourceCond = config.get("condition")["resourceCond"]
@@ -86,24 +111,33 @@ class Farm:
 
     def get_cost(self, action: Action) -> float:
         # no cost if no actions were available to the player
-        if action.type == "none":
+        if action.type == ActionType.none:
             return 0
 
         # fixed cost if voluntarily passing
-        if action.type == "pillow":
+        if action.type == ActionType.pillow or action.type == ActionType.timeout:
             return self.pillowcost
 
         # whose turn is it?
-        currentplayer = self.players[self.turn]
+        currentplayer = self.whose_turn()
 
         # player moves to location. decrease energy by steps taken.
-        # find shortest path with bfs, use that step length to decrement energy
-        path = getPath(self, currentplayer, action)
-        n_steps = len(path)
+        n_steps = utils.getManhattanDistance(currentplayer["loc"], action.loc)
+        # if going to the farm the player might have to step around the farm wall
+        if action.type == ActionType.box and currentplayer["loc"]["y"] <= self.farmbox.loc["y"]:
+            n_steps += 2
+        # if the player, other player and target are in the same row or column, and the other
+        # player is in the way, then add 2 sidesteps to go around them.
+        elif utils.is_in_line(currentplayer["loc"], self.other_player()["loc"], action.loc):
+            # Add 2 sidesteps if the other player is in the way. Somehow getPath doesn't cover this.
+            n_steps += 2
 
         # decrease energy for move out of the way
-        if action.type == "box":
-            n_steps += 3 # three because moving 1,2 away
+        if action.type == ActionType.box:
+            statuses = Counter(item.status for item in self.items)
+            # check if this move will end the game. If it does then the payer does not move away.
+            if "farm" in statuses or statuses["backpack"] > len(currentplayer["backpack"]["contents"]):
+                n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
 
     def take_action(self, action: Action, inplace=True) -> Farm:
@@ -117,7 +151,7 @@ class Farm:
         # what does the selected action do the player locations, item locations, and player scores + energy?
 
         # no costs and nothing happens
-        if action.type == "none":
+        if action.type == ActionType.none:
             new_state.nextturn()
             return new_state
 
@@ -134,7 +168,7 @@ class Farm:
         currentplayer["energy"] = max(0, currentplayer["energy"] - new_state.get_cost(action))
 
         # if action is pillow, no movement, no encounter, just small energy cost and move on.
-        if action.type == "pillow":
+        if action.type == ActionType.pillow:
             new_state.nextturn()
             return new_state
 
@@ -143,21 +177,20 @@ class Farm:
         currentplayer["loc"] = action.loc
 
         # if item, add to backpack.
-        if action.type == "veggie":
+        if action.type == ActionType.veggie:
             # FIND VEGGIE IN ITEMS rather than changing action directly
             veg = next(
                 (item for item in new_state.items if item.id == action.id), None
             )
             veg.status = "backpack"
-            veg.loc = None
-            currentplayer["backpack"]["contents"].append(veg)
-            if veg.color != currentplayer["color"]:
+            currentplayer["backpack"]["contents"].append(action)
+            if Transition(self, action).is_helping():
                 currentplayer["has_helped"] = True
 
         # if box, add backpack contents to box. increment score.
-        if action.type == "box":
+        if action.type == ActionType.box:
             for _ in range(len(currentplayer["backpack"]["contents"])):
-                veg = currentplayer["backpack"]["contents"].pop(0)
+                veg = currentplayer["backpack"]["contents"].pop()
                 veg.status = "box"
 
                 # print(currentplayer["name"] + " deposits " + veg["id"])
@@ -176,13 +209,16 @@ class Farm:
                     otherplayer["score"] += 1
                 else:
                     print("The veggie is neither red nor purple?")
+            if new_state.is_done():
+                new_state.redplayer["bonuspoints"] = new_state.reward("red")
+                new_state.purpleplayer["bonuspoints"] = new_state.reward("purple")
+                return new_state
             # move out of the way of the box
             pos = currentplayer["loc"]
             newpos = {"x": pos["x"] - 1, "y": pos["y"] + 2}
             if newpos == otherplayer["loc"]:
                 newpos = {"x": pos["x"] + 1, "y": pos["y"] + 2}
             currentplayer["loc"] = newpos
-
         new_state.nextturn()
         return new_state
 
@@ -196,6 +232,9 @@ class Farm:
         if self.turn > 1:
             self.turn = 0
         return
+    
+    def is_done(self):
+        return all(item.status == "box" for item in self.items)
 
     # TODO: There is lots of room for different reward functions
     def reward(self, playercolor: str):
@@ -206,13 +245,10 @@ class Farm:
         else:
             print("EROR")
 
-        state = self
         # currentplayer = state.players[state.turn]
         reward = 0
-        done = False
         # is the game over? set done to true, give bonus points
-        if all(i.status == "box" for i in state.items):
-            done = True
+        if self.is_done():
             # print(playercolor + " player's score is " + str(relevantplayer['score']) + " and energy is " + str(relevantplayer['energy']))
             relevantplayer["bonuspoints"] = (
                 relevantplayer["score"] * relevantplayer["energy"]
@@ -222,9 +258,15 @@ class Farm:
         # else:
         #     reward = relevantplayer.score #just how many items they have delivered as they go along
 
-        return reward, done
+        return reward
 
-    def legal_actions(self) -> List[Action]:
+    def whose_turn(self):
+        return self.players[self.turn]
+    
+    def other_player(self):
+        return self.players[1 - self.turn]
+
+    def legal_actions(self) -> list[Action]:
         action_list = []
         player = self.players[self.turn]
         # bag full
@@ -246,28 +288,16 @@ class Farm:
             # pillow is only an option if you have other options
             # if game is not done, and no other moves, must pass turn (aka pillow)
             # create pillow new each time because player location changes
-            action_list.append(
-                self.create_pillow(
-                    {"name": "pillow", "color": player["color"], "loc": player["loc"]}
-                )
-            )
+            action_list.append(self.create_pillow("pillow", player["color"], player["loc"]))
 
         # This is the case where there are actually no moves left for the agent.  They're forced to just stay in place but there is no cost (unlike pillow)
         if len(action_list) == 0 and not all(i.status == "box" for i in self.items):
-            action_list.append(
-                self.create_pillow(
-                    {"name": "none", "color": player["color"], "loc": player["loc"]}
-                )
-            )
-
-        # if game is not done, and no other moves, can pass turn
-        # if (len(action_list)==0 and not all(i['status']=="box" for i in self.items)):
-        #     # action_list.append({'name':'pass','color':player['color'], 'loc':player['loc'], 'id':'pass','type':'pass'})
-        #     action_list.append(self.create_pillow({'name':'pillow', 'color':player['color'], 'loc':player['loc']}))
+            action_list.append(self.create_pillow("none", player["color"], player["loc"]))
 
         return action_list
 
-    def create_player(self, config):
+    @staticmethod
+    def create_player(config):
         # purple starts at 'x':3, 'y':16
         # red starts at 'x':2, 'y':15
         player = {}
@@ -277,30 +307,33 @@ class Farm:
         player["color"] = config.get("name")
         player["capacity"] = config.get("capacity")
         player["contents"] = config.get("contents", [])
-        player["backpack"] = self.create_backpack(
+        player["backpack"] = Farm.create_backpack(
             {
                 "name": config.get("name"),
                 "capacity": config.get("capacity"),
                 "contents": config.get("contents", []),
             }
         )  # default backpacksettings
-        player["score"] = 0
-        player["energy"] = 100
-        player["bonuspoints"] = 0
-        player["has_helped"] = False
+        player["score"] = config.get("score", 0)
+        player["energy"] = config.get("energy", 100)
+        player["bonuspoints"] = config.get("bonuspoints", 0)
+        player["has_helped"] = config.get("has_helped", False)
         return player
 
-    def create_farmbox(self, config) -> Action:
-        farmbox = Action("box", "box", None, config.get("loc", {"x": 16, "y": 5}), "box")
-        farmbox.contents = config.get("boxcontents", [])
+    @staticmethod
+    def create_farmbox(location: dict[str, int], contents=[]) -> Action:
+        farmbox = Action("box", ActionType.box, None, location, "box")
+        farmbox.contents = contents
         return farmbox
 
-    def create_veggie(self, config) -> Action:
-        veggie = Action(config.get("name"), "veggie", config.get("color"), config.get("loc"), config.get("id"))
-        veggie.status = config.get("status", "farm")
+    @staticmethod
+    def create_veggie(name: str, color: str, vegstr: str, status="farm") -> Action:
+        veggie = Action(name, ActionType.veggie, color, Farm.extract_location(vegstr), vegstr.split("(")[0])
+        veggie.status = status
         return veggie
 
-    def create_backpack(self, config):
+    @staticmethod
+    def create_backpack(config):
         backpack = {}
         backpack["name"] = config.get("name")
         backpack["type"] = "backpack"
@@ -308,51 +341,30 @@ class Farm:
         backpack["contents"] = config.get("contents", [])
         return backpack
 
-    def create_pillow(self, config) -> Action:
-        pillow = Action(config.get("name"),  config.get("name"), config.get("color"), config.get("loc"), config.get("color") + config.get("name"))
+    @staticmethod
+    def create_pillow(name: str, color: str, loc: dict[str, int]) -> Action:
+        type = ActionType.none if name == "none" else ActionType.pillow
+        pillow = Action(name, type, color, loc, color + name)
         return pillow
 
-    def create_items(self, layer: str) -> List[Action]:  # twelve possible layers, "Items00" thru "Items11"
+    @staticmethod
+    def extract_location(item: str) -> dict[str, int]:
+        x, y = item.split("(")[-1].strip(")").split(",")
+        return {"x": int(x), "y": int(y)}
+    
+    @staticmethod
+    def create_item(vegstr: str) -> Action:
+        # veggie str looks something like: 'Tomato00(8,7)' or 'Strawberry00(7,7)'
+        name = vegstr.split("0")[0].lower()
+        color = "red" if name == "tomato" or name == "strawberry" else "purple"
+        return Farm.create_veggie(name, color, vegstr)
 
-        # configure how to get list of veggies from a given starting setup (one of the twelve object layers)
-        fname = "config/objectLayers.csv"
-        objectlayers = {}
-
-        with open(fname, "r") as data:
-            for line in csv.DictReader(data):
-                layername = line["objectLayer"]
-                farmitems = line["farmItems"].strip("']['").split(" ")
-                # print(layername)
-                objectlayers[layername] = farmitems
-
-        veggies = []
+    @staticmethod
+    def create_items(layer: str) -> list[Action]:  # twelve possible layers, "Items00" thru "Items11"
         # twelve possible layers, "Items00" thru "Items11"
-        for vegstr in objectlayers[layer]:
-            # veggie str looks something like: 'Tomato00(8,7)' or 'Strawberry00(7,7)'
-            name = vegstr.split("0")[0].lower()
-            x, y = vegstr.split("(")[-1].split("(")[-1].strip(")").split(",")
-            color = "red" if name == "tomato" or name == "strawberry" else "purple"
-            vegconfig = {
-                "loc": {"x": int(x), "y": int(y)},
-                "name": name,
-                "color": color,
-                "id": vegstr,
-            }
-            veggies.append(self.create_veggie(vegconfig))
-        return veggies
+        return [Farm.create_item(vegstr) for vegstr in Farm.objectlayers[layer]]
 
     def __iter__(self):
-        # properties = [
-        #     tuple(self.redplayer.items()),      #0  # convert dicts to tuples with items() method so retain all info
-        #     tuple(self.purpleplayer.items()),   #1
-        #     self.redfirst,       #2
-        #     tuple(self.items.items()),          #3
-        #     tuple(self.farmbox.items()),        #4
-        #     self.stepcost,       #5
-        #     self.turn            #6
-        #     ]
-        # for i in range(len(properties)):
-        #     yield properties[i]
         state = copy.deepcopy(
             self
         )  # otherwise it turns the items themselves into tuples!
@@ -366,13 +378,12 @@ class Farm:
             state.pillowcost,
             state.turn,
         ]
-        # proptuple = immutify_dict(props)
 
         for i in range(len(props)):
             yield immutify(props[i])
 
-    # this method doesn't use self but can be accessed from any farm obj
-    def unpack(self, tupstate):
+    @staticmethod
+    def unpack(tupstate):
         # given a tuple of the farm, unpack it to create a farm object
         config = {
             "redplayer": demutify(tupstate[0]),
@@ -414,8 +425,24 @@ class Transition(NamedTuple):
     state: Farm
     action: Action
 
-Game = List[Transition]
-Session = List[Game]
+    def next_state(self) -> Farm:
+        return self.state.take_action(self.action, inplace=False)
+
+    def is_helping(self, target_player: str|dict = None) -> bool:
+        if not self.action:
+            return False
+        if target_player:
+            target_color = target_player["color"] if isinstance(target_player, dict) else target_player
+            if target_color != self.state.whose_turn()["color"]:
+                # a player can't be helping if it isn't their turn
+                return False
+        return self.action.color == self.state.other_player()["color"]
+    
+    def __str__(self) -> str:
+        return f"{self.state.trial:>2}. {self.state.whose_turn()['color']} picks {self.action}"
+
+Game = list[Transition]
+Session = list[Game]
 
 # # global
 # def getstatefromhash(shash):
@@ -428,28 +455,6 @@ Session = List[Game]
 #     #             "turn": self.turn
 #     #             }
 #     #     new_state = Farm(config)
-
-
-def unpack_farm(tupstate):
-    # given a tuple of the farm, unpack it to create a farm object
-    # print('\nunpacking farm!')
-    # print(tupstate[0])
-    # print(demutify(tupstate[0]))
-    # all good up to here
-    config = {
-        "redplayer": demutify(tupstate[0]),
-        "purpleplayer": demutify(tupstate[1]),
-        "redfirst": tupstate[2],
-        "items": demutify(tupstate[3]),
-        "farmbox": demutify(tupstate[4]),
-        "stepcost": tupstate[5],
-        "pillocost": tupstate[6],
-        "turn": tupstate[7],
-    }
-    # config = demutify_dict(tupstate)
-    # print(config)
-    return Farm(config)
-
 
 def immutify(d):
     if type(d) == list:

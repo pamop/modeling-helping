@@ -11,6 +11,10 @@ __pycache__/
 .vscode/*
 !.vscode/extensions.json
 .DS_Store
+.Rhistory
+modeling/test.csv
+.ipynb_checkpoints/
+*.prof
 
 # Jupyter Notebook
 .ipynb_checkpoints
