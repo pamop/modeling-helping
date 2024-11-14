@@ -3,14 +3,12 @@ import numpy as np
 from scipy.special import softmax
 
 import farmgame
-from fitting import Model
+from model import Model, Parameter
 
 class GreedyHelpingModel(Model):
-	def __init__(self, colour: str, inverse_temperature = 1.0, helping_cost_ratio = 1.0, reciprocity = 0.0):
+	def __init__(self, inverse_temperature = 1.0, helping_cost_ratio = 1.0, reciprocity = 0.0):
 		"""
 		Parameters:
-		colour:
-			the colour of the farmer this agent is playing.
 		inverse_temperature (float):
 			how deterministic this agent plays. A value of 0 will result in completely
 			random play. A value of infinity will result in fully deterministic play.
@@ -28,17 +26,35 @@ class GreedyHelpingModel(Model):
 			still modulated by helping_cost_ratio too. At reciprocity = 0 there will be no
 			change in preceived cost for helping actions.
 		"""
-		self.colour = colour
 		self.inv_temp = inverse_temperature
 		self.helping_cost_ratio = helping_cost_ratio
 		self.reciprocity = reciprocity
 	
+	def describe_parameters(self) -> list[Parameter]:
+		return [
+			Parameter("inverse_temperature", 0),
+			Parameter("helping_cost_ratio", 0.001),
+			Parameter("reciprocity", 0)
+		]
+	
+	def create_from_list(self, params: list[float]) -> Model:
+		return GreedyHelpingModel(params[0], params[1], params[2])
+
+
+	def unit_to_range(self, unit: List[float]) -> List[float]:
+		return [
+			100 ** unit[0] - 1,
+			(unit[1] + 0.5) ** 6,
+			50 ** unit[2] - 1
+		]
+
 	def get_probs(self, state: farmgame.Farm, actions: List[farmgame.Action]):
 		perceived_costs = []
 		pass_index = -1
 		farm_dropoff_index = -1
 		can_harvest_own = False
 		can_help = False
+		own_color = state.whose_turn()["color"]
 		for action in actions:
 			if action.type == "pillow":
 				# store fixed cost now, but keep the index so we can modify it later
@@ -48,7 +64,7 @@ class GreedyHelpingModel(Model):
 				# store the move cost now, but keep the index so we can modify it later
 				farm_dropoff_index = len(perceived_costs)
 				perceived_costs.append(state.get_cost(action))
-			elif action.color == self.colour:
+			elif action.color == own_color:
 				# getting your own veggies is simply taking the cost of getting there
 				can_harvest_own = True
 				perceived_costs.append(state.get_cost(action))
@@ -57,7 +73,7 @@ class GreedyHelpingModel(Model):
 				# preferences for helping and reciprocating into account
 				can_help = True
 				cost_ratio = self.helping_cost_ratio
-				if state.opponent_has_helped(self.colour):
+				if state.opponent_has_helped(own_color):
 					cost_ratio /= 1 + self.reciprocity
 				perceived_costs.append(cost_ratio * state.get_cost(action))
 		if can_harvest_own:
