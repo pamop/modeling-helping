@@ -258,7 +258,7 @@ class Farm:
         # else:
         #     reward = relevantplayer.score #just how many items they have delivered as they go along
 
-        return reward
+        return reward, self.is_done()
 
     def whose_turn(self):
         return self.players[self.turn]

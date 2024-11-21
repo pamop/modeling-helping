@@ -86,7 +86,7 @@ class MCTS(object):
         # makes [(state, action1),...,(state, action_n)] for n legal actions
         statecopy = copy.deepcopy(state)
         # All possible action, next_state pairs
-        moves_states = [(a['id'], self.hash_and_store(statecopy.take_action(a,inplace=False))) for a in legal] #TODO: replace tuple with hash? (use hash table if need to un-hash state)
+        moves_states = [(a.id, self.hash_and_store(statecopy.take_action(a,inplace=False))) for a in legal] #TODO: replace tuple with hash? (use hash table if need to un-hash state)
 
 
         # pick the move with the highest average reward
@@ -113,7 +113,7 @@ class MCTS(object):
         
         # return the move chosen
         # move is currently the unique id of the action, so find the legal action with this id
-        action = next((a for a in legal if a['id'] == move), None) # I mean, i dont really want "none" to be an option at all! 
+        action = next((a for a in legal if a.id == move), None) # I mean, i dont really want "none" to be an option at all! 
         return action
         
         
@@ -135,7 +135,7 @@ class MCTS(object):
         for t in range(self.max_moves):
             legal = simstate.legal_actions() #self.game.legal_actions(states_copy) # get valid actions
  
-            moves_states = [(a['id'], self.hash_and_store(simstate.take_action(a,inplace=False))) for a in legal]
+            moves_states = [(a.id, self.hash_and_store(simstate.take_action(a,inplace=False))) for a in legal]
 
             if all(plays.get((player, S)) for a, S in iter(moves_states)):
                 # if we have statistics on all legal moves, use them.
