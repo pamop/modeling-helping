@@ -139,6 +139,12 @@ class Farm:
             if "farm" in statuses or statuses["backpack"] > len(currentplayer["backpack"]["contents"]):
                 n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
+
+    def all_objects_picked_up(self, player_color: str) -> bool:
+        player_items = [
+            item for item in self.items if item.color == player_color and item.type == ActionType.veggie
+        ]
+        return all(item.status == "backpack" for item in player_items)
     
     def get_steps(self, action: Action) -> int:
         # no cost if no actions were available to the player

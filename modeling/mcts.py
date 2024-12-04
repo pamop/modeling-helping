@@ -220,7 +220,9 @@ class MCTS(object):
 
             # everyone gets punished for slowness regardless of reward policy
             # punish these bots for taking too long thoooooo
-            self.rewards[(player,q)]-= simstate.trial # TEMPORAL COST - THIS PENALTY MAY NEED TO BE TUNED
+            penalty_factor = 0.0  # Scale factor
+            self.rewards[(player, q)] -= penalty_factor * simstate.trial
+            # self.rewards[(player,q)]-= simstate.trial # TEMPORAL COST - THIS PENALTY MAY NEED TO BE TUNED
 
     # here, we use string representation of hash rather than int that hash() itself gives
     def hash_and_store(self, s):
