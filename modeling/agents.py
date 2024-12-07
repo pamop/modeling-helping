@@ -39,6 +39,49 @@ class RandomPolicy(object):
             return legal[0] # This would happen if the player had no moves, they'd auto choose the "none" action and skip their turn at no cost.
         else:
             return random.choice(legal) # Actual decision policy. Random!
+# q learning agent 
+
+class QLearningAgent:
+    def __init__(self, learning_rate=0.1, discount_factor=0.99, epsilon=0.1):
+        self.q_table = {}  # Dictionary to store Q-values
+        #self.actions = actions
+        self.learning_rate = learning_rate
+        self.discount_factor = discount_factor
+        self.epsilon = epsilon
+        
+        self.id = shortuuid.uuid()
+        self.states = []
+        self.agent_type="random"
+#        self.identity = kwargs.get('color','red') # to be consistent with MCTS
+#        self.policy = kwargs.get('policy','random') # random is as random does
+#        self.seed = kwargs.get('seed',717)
+#        random.seed(self.seed)
+        self.rewards = {}
+        self.plays = {}
+    
+    def update(self,state):
+        self.states.append(state)
+
+    def get_q_value(self, state, action):
+        return self.q_table.get((state, action), 0.0)
+
+    def choose_action(self):
+        state = self.states[-1]
+        actions = state.legal_actions()
+        if random.random() < self.epsilon:  # Explore
+            return random.choice(actions)
+        else:  # Exploit
+            q_values = [self.get_q_value(state, a) for a in actions]
+            return actions[np.argmax(q_values)]
+
+    def update_q_value(self, action, reward, next_state):
+        state = self.states[-1]
+        actions = state.legal_actions()
+        max_q_next = max([self.get_q_value(next_state, a) for a in actions], default=0)
+        td_target = reward + self.discount_factor * max_q_next
+        td_error = td_target - self.get_q_value(state, action)
+        new_q_value = self.get_q_value(state, action) + self.learning_rate * td_error
+        self.q_table[(state, action)] = new_q_value
 
 # more agents:
 # heuristic policies like
