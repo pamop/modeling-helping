@@ -140,6 +140,43 @@ class Farm:
                 n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
 
+    def all_objects_picked_up(self, player_color: str) -> bool:
+        player_items = [
+            item for item in self.items if item.color == player_color and item.type == ActionType.veggie
+        ]
+        return all(item.status == "backpack" for item in player_items)
+    
+    def get_steps(self, action: Action) -> int:
+        # no cost if no actions were available to the player
+        if action.type == ActionType.none:
+            return 0
+
+        # fixed cost if voluntarily passing
+        if action.type == ActionType.pillow or action.type == ActionType.timeout:
+            return self.pillowcost
+
+        # whose turn is it?
+        currentplayer = self.whose_turn()
+
+        # player moves to location. decrease energy by steps taken.
+        n_steps = utils.getManhattanDistance(currentplayer["loc"], action.loc)
+        # if going to the farm the player might have to step around the farm wall
+        if action.type == ActionType.box and currentplayer["loc"]["y"] <= self.farmbox.loc["y"]:
+            n_steps += 2
+        # if the player, other player and target are in the same row or column, and the other
+        # player is in the way, then add 2 sidesteps to go around them.
+        elif utils.is_in_line(currentplayer["loc"], self.other_player()["loc"], action.loc):
+            # Add 2 sidesteps if the other player is in the way. Somehow getPath doesn't cover this.
+            n_steps += 2
+
+        # decrease energy for move out of the way
+        if action.type == ActionType.box:
+            statuses = Counter(item.status for item in self.items)
+            # check if this move will end the game. If it does then the payer does not move away.
+            if "farm" in statuses or statuses["backpack"] > len(currentplayer["backpack"]["contents"]):
+                n_steps += 3 # three because moving 1,2 away
+        return n_steps
+
     def take_action(self, action: Action, inplace=True) -> Farm:
         if inplace:
             new_state = self
@@ -150,6 +187,11 @@ class Farm:
 
         # what does the selected action do the player locations, item locations, and player scores + energy?
 
+
+        print(f"Before action: {action}, Player position: {new_state.whose_turn()['loc']}")
+
+
+        
         # no costs and nothing happens
         if action.type == ActionType.none:
             new_state.nextturn()
@@ -220,6 +262,10 @@ class Farm:
                 newpos = {"x": pos["x"] + 1, "y": pos["y"] + 2}
             currentplayer["loc"] = newpos
         new_state.nextturn()
+
+        print(f"After action: {action}, Player position: {new_state.whose_turn()['loc']}")
+
+        
         return new_state
 
     def opponent_has_helped(self, color: str) -> bool:
@@ -258,7 +304,7 @@ class Farm:
         # else:
         #     reward = relevantplayer.score #just how many items they have delivered as they go along
 
-        return reward
+        return reward, self.is_done()
 
     def whose_turn(self):
         return self.players[self.turn]
@@ -269,6 +315,10 @@ class Farm:
     def legal_actions(self) -> list[Action]:
         action_list = []
         player = self.players[self.turn]
+
+        print(f"Legal actions computation for player: {player['name']}")
+
+        
         # bag full
         if len(player["backpack"]["contents"]) >= player["backpack"]["capacity"]:
             # append box and nothing else
@@ -293,6 +343,8 @@ class Farm:
         # This is the case where there are actually no moves left for the agent.  They're forced to just stay in place but there is no cost (unlike pillow)
         if len(action_list) == 0 and not all(i.status == "box" for i in self.items):
             action_list.append(self.create_pillow("none", player["color"], player["loc"]))
+
+        print(f"Computed legal actions: {action_list}")
 
         return action_list
 

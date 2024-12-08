@@ -42,6 +42,8 @@ class MCTS(object):
         self.verbose = kwargs.get('verbose',False) 
         self.rewards = {}
         self.plays = {}
+        self.n_random = 0
+        self.n_best = 0
         self.farmstatehash = {}
         self.agent_information = {"color":self.identity, "agent_type":self.agent_type,"time":self.calculation_time,"max_moves":self.max_moves,"C":self.C}
 
@@ -50,6 +52,7 @@ class MCTS(object):
     def update(self,state):
         self.states.append(state)
         self.tupstates.append(tuple(state))
+        # print('random', self.n_random, 'best', self.n_best)
         
     # calculates best move and returns it
     def choose_action(self):
@@ -86,7 +89,7 @@ class MCTS(object):
         # makes [(state, action1),...,(state, action_n)] for n legal actions
         statecopy = copy.deepcopy(state)
         # All possible action, next_state pairs
-        moves_states = [(a['id'], self.hash_and_store(statecopy.take_action(a,inplace=False))) for a in legal] #TODO: replace tuple with hash? (use hash table if need to un-hash state)
+        moves_states = [(a.id, self.hash_and_store(statecopy.take_action(a,inplace=False))) for a in legal] #TODO: replace tuple with hash? (use hash table if need to un-hash state)
 
 
         # pick the move with the highest average reward
@@ -113,7 +116,7 @@ class MCTS(object):
         
         # return the move chosen
         # move is currently the unique id of the action, so find the legal action with this id
-        action = next((a for a in legal if a['id'] == move), None) # I mean, i dont really want "none" to be an option at all! 
+        action = next((a for a in legal if a.id == move), None) # I mean, i dont really want "none" to be an option at all! 
         return action
         
         
@@ -135,7 +138,7 @@ class MCTS(object):
         for t in range(self.max_moves):
             legal = simstate.legal_actions() #self.game.legal_actions(states_copy) # get valid actions
  
-            moves_states = [(a['id'], self.hash_and_store(simstate.take_action(a,inplace=False))) for a in legal]
+            moves_states = [(a.id, self.hash_and_store(simstate.take_action(a,inplace=False))) for a in legal]
 
             if all(plays.get((player, S)) for a, S in iter(moves_states)):
                 # if we have statistics on all legal moves, use them.
@@ -152,6 +155,11 @@ class MCTS(object):
                 # there could be equivalent actions (multiple maxima) so let us choose between those
                 finalists = [x for x in competitors if x[0]==highestval]
                 value, action, shash = random.choice(finalists)
+                
+                # print('took best choice')
+                # self.n_best += 1
+            
+                # print(plays) 
                 # # value of best
                 # value, action, shash = max(
                 #     (((rewards[(player, S)] / plays[(player, S)]) +
@@ -162,7 +170,13 @@ class MCTS(object):
             else:
                 # if we don't have stats on all legal moves, randomly pick one
 #                 print("Random choice") (TODO: smarter default choice algo)
+                # print('dont have stats on legal moves, doing random')  
+                # self.n_random += 1
                 action, shash = random.choice(moves_states)
+                # print(plays)
+            
+
+            
                 # # NEW let's have default policy be colorblind nearestneighbor
                 # myplayer = simstate.players[simstate.turn]
                 # sorted_legal = sorted(legal, key=lambda x: getManhattanDistance(myplayer,x))
@@ -220,7 +234,10 @@ class MCTS(object):
 
             # everyone gets punished for slowness regardless of reward policy
             # punish these bots for taking too long thoooooo
-            self.rewards[(player,q)]-= simstate.trial # TEMPORAL COST - THIS PENALTY MAY NEED TO BE TUNED
+            penalty_factor = 0.0  # Scale factor
+            self.rewards[(player, q)] -= penalty_factor * simstate.trial
+            # self.rewards[(player,q)]-= simstate.trial # TEMPORAL COST - THIS PENALTY MAY NEED TO BE TUNED
+            
 
     # here, we use string representation of hash rather than int that hash() itself gives
     def hash_and_store(self, s):
