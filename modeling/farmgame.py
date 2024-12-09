@@ -187,14 +187,6 @@ class Farm:
 
         # what does the selected action do the player locations, item locations, and player scores + energy?
 
-<<<<<<< Updated upstream
-=======
-
-        #print(f"Before action: {action}, Player position: {new_state.whose_turn()['loc']}")
-
-
-        
->>>>>>> Stashed changes
         # no costs and nothing happens
         if action.type == ActionType.none:
             new_state.nextturn()
@@ -265,13 +257,7 @@ class Farm:
                 newpos = {"x": pos["x"] + 1, "y": pos["y"] + 2}
             currentplayer["loc"] = newpos
         new_state.nextturn()
-<<<<<<< Updated upstream
-=======
 
-        #print(f"After action: {action}, Player position: {new_state.whose_turn()['loc']}")
-
-        
->>>>>>> Stashed changes
         return new_state
 
     def opponent_has_helped(self, color: str) -> bool:
@@ -321,13 +307,7 @@ class Farm:
     def legal_actions(self) -> list[Action]:
         action_list = []
         player = self.players[self.turn]
-<<<<<<< Updated upstream
-=======
 
-        #print(f"Legal actions computation for player: {player['name']}")
-
-        
->>>>>>> Stashed changes
         # bag full
         if len(player["backpack"]["contents"]) >= player["backpack"]["capacity"]:
             # append box and nothing else
@@ -353,11 +333,6 @@ class Farm:
         if len(action_list) == 0 and not all(i.status == "box" for i in self.items):
             action_list.append(self.create_pillow("none", player["color"], player["loc"]))
 
-<<<<<<< Updated upstream
-=======
-        #print(f"Computed legal actions: {action_list}")
-
->>>>>>> Stashed changes
         return action_list
 
     @staticmethod
