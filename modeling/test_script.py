@@ -26,7 +26,7 @@ def session_nll(params: list[float], session: farmgame.Session, red_model: model
 	n_red_p = len(red_model.describe_parameters())
 	red_instance = red_model.create_from_list(params[:n_red_p])
 	purple_instance = purple_model.create_from_list(params[n_red_p:])
-	return sum([model.compute_nll(game, red_instance, purple_instance) for game in session])
+	return sum([model.compute_session_nll(game, red_instance, purple_instance) for game in session])
 
 
 # set up and run recovery

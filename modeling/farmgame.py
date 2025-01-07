@@ -108,6 +108,8 @@ class Farm:
         self.resourceCond = config.get("condition")["resourceCond"]
         self.costCond = config.get("condition")["costCond"]
         self.visibilityCond = config.get("condition")["visibilityCond"]
+        #last actions
+        self.last_actions = {"red": None, "purple": None}
 
     def get_cost(self, action: Action) -> float:
         # no cost if no actions were available to the player
@@ -140,87 +142,124 @@ class Farm:
                 n_steps += 3 # three because moving 1,2 away
         return n_steps * self.stepcost
 
+    def all_objects_picked_up(self, player_color: str) -> bool:
+        player_items = [
+            item for item in self.items if item.color == player_color and item.type == ActionType.veggie
+        ]
+        return all(item.status == "backpack" for item in player_items)
+    
+    def get_steps(self, action: Action) -> int:
+        # no cost if no actions were available to the player
+        if action.type == ActionType.none:
+            return 0
+
+        # fixed cost if voluntarily passing
+        if action.type == ActionType.pillow or action.type == ActionType.timeout:
+            return self.pillowcost
+
+        # whose turn is it?
+        currentplayer = self.whose_turn()
+
+        # player moves to location. decrease energy by steps taken.
+        n_steps = utils.getManhattanDistance(currentplayer["loc"], action.loc)
+        # if going to the farm the player might have to step around the farm wall
+        if action.type == ActionType.box and currentplayer["loc"]["y"] <= self.farmbox.loc["y"]:
+            n_steps += 2
+        # if the player, other player and target are in the same row or column, and the other
+        # player is in the way, then add 2 sidesteps to go around them.
+        elif utils.is_in_line(currentplayer["loc"], self.other_player()["loc"], action.loc):
+            # Add 2 sidesteps if the other player is in the way. Somehow getPath doesn't cover this.
+            n_steps += 2
+
+        # decrease energy for move out of the way
+        if action.type == ActionType.box:
+            statuses = Counter(item.status for item in self.items)
+            # check if this move will end the game. If it does then the payer does not move away.
+            if "farm" in statuses or statuses["backpack"] > len(currentplayer["backpack"]["contents"]):
+                n_steps += 3 # three because moving 1,2 away
+        return n_steps
+
     def take_action(self, action: Action, inplace=True) -> Farm:
+        """
+        Apply the given action to the game state.
+    
+        Args:
+            action (Action): The action to take.
+            inplace (bool): Whether to modify the current state or return a new one.
+    
+        Returns:
+            Farm: The updated game state.
+        """
         if inplace:
             new_state = self
         else:
-            new_state = copy.deepcopy(
-                self
-            )  # does the native python copy.deepcopy method work here, or do i need to customize in __deepcopy__?
-
-        # what does the selected action do the player locations, item locations, and player scores + energy?
-
-        # no costs and nothing happens
+            new_state = copy.deepcopy(self)
+    
+        # Record the last action for the current player
+        playercolor = new_state.players[new_state.turn]["name"]
+        new_state.last_actions[playercolor] = action
+    
+        # Handle "none" action
         if action.type == ActionType.none:
             new_state.nextturn()
             return new_state
-
-        # from here we need to know whose turn it is to update the state properly.
-        playercolor = new_state.players[new_state.turn]["name"]
-        if playercolor == "red":
-            currentplayer = new_state.redplayer
-            otherplayer = new_state.purpleplayer
-        else:
-            currentplayer = new_state.purpleplayer
-            otherplayer = new_state.redplayer
-
-        # decrease energy for the action
+    
+        # Get the current and other players
+        currentplayer = new_state.players[new_state.turn]
+        otherplayer = new_state.players[1 - new_state.turn]
+    
+        # Decrease energy for the action
         currentplayer["energy"] = max(0, currentplayer["energy"] - new_state.get_cost(action))
-
-        # if action is pillow, no movement, no encounter, just small energy cost and move on.
+    
+        # Handle "pillow" action
         if action.type == ActionType.pillow:
             new_state.nextturn()
             return new_state
-
-        # aha, so the player needs to move! player moves to location.
-        # change player's location to action target location.
+    
+        # Update player location
         currentplayer["loc"] = action.loc
-
-        # if item, add to backpack.
+    
+        # Handle "veggie" action
         if action.type == ActionType.veggie:
-            # FIND VEGGIE IN ITEMS rather than changing action directly
-            veg = next(
-                (item for item in new_state.items if item.id == action.id), None
-            )
+            veg = next((item for item in new_state.items if item.id == action.id), None)
             veg.status = "backpack"
             currentplayer["backpack"]["contents"].append(action)
             if Transition(self, action).is_helping():
                 currentplayer["has_helped"] = True
-
-        # if box, add backpack contents to box. increment score.
+    
+        # Handle "box" action
         if action.type == ActionType.box:
             for _ in range(len(currentplayer["backpack"]["contents"])):
                 veg = currentplayer["backpack"]["contents"].pop()
                 veg.status = "box"
-
-                # print(currentplayer["name"] + " deposits " + veg["id"])
-
-                # update status of veg in items list as well
-                veg_item = next(
-                    (item for item in new_state.items if item.id == veg.id), None
-                )
+    
+                # Update veggie status in items list
+                veg_item = next((item for item in new_state.items if item.id == veg.id), None)
                 veg_item.status = "box"
-
-                # add the veg to the farmbox
+    
+                # Add veggie to farmbox and update scores
                 new_state.farmbox.contents.append(veg)
                 if veg.color == currentplayer["name"]:
                     currentplayer["score"] += 1
                 elif veg.color == otherplayer["name"]:
                     otherplayer["score"] += 1
-                else:
-                    print("The veggie is neither red nor purple?")
+    
+            # Check if the game is done
             if new_state.is_done():
                 new_state.redplayer["bonuspoints"] = new_state.reward("red")
                 new_state.purpleplayer["bonuspoints"] = new_state.reward("purple")
                 return new_state
-            # move out of the way of the box
+    
+            # Move the player out of the way of the box
             pos = currentplayer["loc"]
             newpos = {"x": pos["x"] - 1, "y": pos["y"] + 2}
             if newpos == otherplayer["loc"]:
                 newpos = {"x": pos["x"] + 1, "y": pos["y"] + 2}
             currentplayer["loc"] = newpos
+    
         new_state.nextturn()
         return new_state
+
 
     def opponent_has_helped(self, color: str) -> bool:
         opponent = self.redplayer if color == "red" else self.purpleplayer
@@ -236,29 +275,57 @@ class Farm:
     def is_done(self):
         return all(item.status == "box" for item in self.items)
 
-    # TODO: There is lots of room for different reward functions
+    #Playing around with this
     def reward(self, playercolor: str):
+        """
+        Calculate the reward for the given player based on their current state.
+    
+        Args:
+            playercolor (str): "red" or "purple", indicating the player for whom the reward is calculated.
+    
+        Returns:
+            float, bool: The calculated reward and whether the game is done.
+        """
         if playercolor == "red":
             relevantplayer = self.redplayer
+            otherplayer = self.purpleplayer
         elif playercolor == "purple":
             relevantplayer = self.purpleplayer
+            otherplayer = self.redplayer
         else:
-            print("EROR")
-
-        # currentplayer = state.players[state.turn]
+            raise ValueError("Invalid playercolor: must be 'red' or 'purple'.")
+    
         reward = 0
-        # is the game over? set done to true, give bonus points
+        last_action = self.last_actions[playercolor]
+    
+        # Check if the last action was helpful
+        if last_action and Transition(self, last_action).is_helping():
+            reward -= 100  # Strong negative penalty for helpful moves
+    
+        # Reward for picking up own items
+        elif last_action and last_action.type == ActionType.veggie:
+            if last_action.color == relevantplayer["color"]:
+                reward += 10  # Positive reward for collecting own item
+            else:
+                reward -= 5  # Negative reward for picking up opponent's item
+    
+        # Reward for skipping a turn (neutral)
+        elif last_action and last_action.type == ActionType.pillow:
+            reward += 0  # No reward or penalty for skipping a turn
+    
+        # Negative reward for any other actions
+        elif last_action and last_action.type != ActionType.veggie:
+            reward -= 1  # Penalize unnecessary actions
+    
+        # Final bonus at the end of the game
         if self.is_done():
-            # print(playercolor + " player's score is " + str(relevantplayer['score']) + " and energy is " + str(relevantplayer['energy']))
-            relevantplayer["bonuspoints"] = (
-                relevantplayer["score"] * relevantplayer["energy"]
-            )
-            # otherplayer.bonuspoints = otherplayer.score * otherplayer.energy
-            reward = relevantplayer["bonuspoints"]
-        # else:
-        #     reward = relevantplayer.score #just how many items they have delivered as they go along
+            reward += relevantplayer["score"] * relevantplayer["energy"]
+    
+        return reward, self.is_done()
 
-        return reward
+
+
+
 
     def whose_turn(self):
         return self.players[self.turn]
@@ -269,6 +336,7 @@ class Farm:
     def legal_actions(self) -> list[Action]:
         action_list = []
         player = self.players[self.turn]
+
         # bag full
         if len(player["backpack"]["contents"]) >= player["backpack"]["capacity"]:
             # append box and nothing else
